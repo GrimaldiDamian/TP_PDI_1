@@ -14,12 +14,13 @@ def ecualizacion_local(img, tamaño_ventana) -> np.ndarray:
 
     m,n = tamaño_ventana
     bordes = max(m,n)//2
+    top, bottom, left, right = bordes, bordes, bordes, bordes
 
     filas, columnas = img.shape
 
     img_copia = img.copy()
 
-    img_bordes = cv2.copyMakeBorder(img_copia, bordes, bordes, bordes, bordes, cv2.BORDER_REPLICATE)
+    img_bordes = cv2.copyMakeBorder(img_copia, top,bottom,left,right, cv2.BORDER_REPLICATE)
 
     for fila in range(filas):
         for columna in range(columnas):
@@ -33,8 +34,9 @@ tamaño = (33,33)
 
 img = cv2.imread('TP 1/Imagen_con_detalles_escondidos.tif', cv2.IMREAD_GRAYSCALE)
 img_ecualizada = ecualizacion_local(img, tamaño)
-plt.subplot(121), plt.imshow(img, cmap='gray'), plt.title('Imagen Original')
-plt.axis('off')
-plt.subplot(122), plt.imshow(img_ecualizada, cmap='gray'), plt.title(f'Imagen Ecualizada de tamaño {tamaño}')
-plt.axis('off')
+plt.figure()
+ax1 = plt.subplot(121)
+plt.imshow(img, cmap='gray'), plt.title('Imagen Original')
+plt.subplot(122,sharex=ax1, sharey=ax1), plt.imshow(img_ecualizada, cmap='gray'), plt.title(f'Imagen Ecualizada de tamaño {tamaño}')
+plt.imshow(img_ecualizada, cmap='gray')
 plt.show()
