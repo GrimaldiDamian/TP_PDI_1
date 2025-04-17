@@ -10,27 +10,18 @@ def deteccion_renglones(img : np.ndarray) -> tuple:
     Returns:
         (numpy.ndarray, [numpy.ndarray]): Tupla de imágenes de encabezado y lista con las preguntas.
     """
-    img_copy = img.copy()
+    img_row_zeros = (img <= 130).any(axis=1)
 
-    img_zeros = img_copy <= 130
-
-    img_row_zeros = img_zeros.any(axis=1)
-
-    x = np.diff(img_row_zeros)          
+    x = np.diff(img_row_zeros)
     renglones_indxs = np.argwhere(x).flatten()
 
-    fila_inicio_encabezado = renglones_indxs[2]
-    fila_fin_encabezado = renglones_indxs[3] + 1
-    encabezado = img_copy[fila_inicio_encabezado:fila_fin_encabezado, :]
+    encabezado = img[renglones_indxs[2]+2:renglones_indxs[3], :]
 
-    preguntas = []
-    for i in range(4, len(renglones_indxs)-1, 2):  # Avanzamos de 2 en 2 para pares (inicio, fin)
-        y1 = renglones_indxs[i] + 1
-        y2 = renglones_indxs[i + 1] + 1
-
-        if y2 - y1 > 10:  # Aseguramos que sea un bloque con contenido
-            pregunta = img_copy[y1:y2, :]
-            preguntas.append(pregunta)
+    preguntas = [
+        img[renglones_indxs[i] + 1:renglones_indxs[i + 1] +1, :] 
+        for i in range(4, len(renglones_indxs)-1, 2)  # Avanzamos de 2 en 2 para pares (inicio, fin)
+        if renglones_indxs[i + 1] - renglones_indxs[i] > 10  # Aseguramos que sea un bloque con contenido
+    ]
 
     return encabezado, preguntas
 
@@ -50,7 +41,7 @@ def agrupar_columnas(columnas : np.ndarray, min_dist : int =5) -> list:
         if columnas[i] - columnas[i - 1] > min_dist:
             fin = columnas[i - 1]
             agrupadas.append((inicio + fin) // 2)
-            inicio = columnas[i]
+            inicio = columnas[i] + 1
     
     agrupadas.append((inicio + columnas[-1]) // 2)
     return agrupadas
@@ -82,16 +73,68 @@ def segmentar_encabezado(encabezado: np.ndarray) -> list:
 
     columnas_segmentadas = agrupar_columnas(columnas_con_linea)
 
-    celdas = []
-    for i in range(len(columnas_segmentadas) - 1):
-        x1 = columnas_segmentadas[i]
-        x2 = columnas_segmentadas[i + 1]
-        celda = encabezado[:, x1:x2]
-        celdas.append(celda)
-    
+    celdas = [
+        encabezado[:, columnas_segmentadas[i]+1:columnas_segmentadas[i + 1]]
+        for i in range(len(columnas_segmentadas) - 1)
+    ]
+
     return celdas
 
-img = cv2.imread('TP 1/multiple_choice_1.png', cv2.IMREAD_GRAYSCALE)
+def detectar_caracteres(img: np.ndarray, th_area: int = 2, umbral_espacio = 5) -> list:
+    """
+    Detecta caracteres y espacios en una imagen binaria.
+
+    Args:
+        img (np.ndarray): Imagen en escala de grises o binaria.
+        umbral_espacio (int): Distancia mínima entre caracteres para considerar un espacio.
+
+    Returns:
+        list: Lista con los bounding boxes de cada carácter y " " si hay un espacio.
+    """
+    _, celda_bin = cv2.threshold(img, 128, 255, cv2.THRESH_BINARY_INV)
+
+    num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(celda_bin, connectivity=8, ltype=cv2.CV_32S)
+
+    # Filtrar componentes con área demasiado pequeña (ruido)
+    ix_area = stats[:, cv2.CC_STAT_AREA] > th_area
+    stats_filtradas = stats[ix_area]
+
+    # Ignorar la primera componente (fondo)
+    caracteres = []
+    for i in range(1, len(stats_filtradas)):
+        x, y, w, h, area = stats_filtradas[i]
+        caracteres.append((x, y, w, h))
+
+    # Ordenar caracteres de izquierda a derecha
+    caracteres = sorted(caracteres, key=lambda b: b[0])
+
+    espacios = []
+    for i in range(len(caracteres) - 1):
+        _, _, w, _ = caracteres[i]
+        x_siguiente, _, _, _ = caracteres[i + 1]
+        
+        # Calcular espacio entre caracteres consecutivos
+        espacio_entre = x_siguiente - (caracteres[i][0] + w)
+
+        if espacio_entre >= umbral_espacio:
+            espacios.append(i)
+
+    return caracteres, espacios
+
+def validacion_encabezado (caracteres : list, espacios : list, tipo_encabezado : str):
+    """
+    """
+    total_caracteres = len(caracteres)
+    total_espacios = len(espacios)
+    reglas = {
+        "name":  total_espacios >= 1 and total_caracteres <= 25,
+        "id":    total_espacios == 0 and total_caracteres == 8,
+        "code":  total_espacios == 0 and total_caracteres == 1,
+        "date":  total_espacios == 0 and total_caracteres == 8,
+    }
+
+    estado = "OK" if reglas.get(tipo_encabezado.lower(), False) else "MAL"
+    return f"{tipo_encabezado} : {estado}"
 
 respuestas_correctas = [
     "A", "A", "B", "A", "D", "B", "B", "C", "B", "A",
@@ -99,6 +142,18 @@ respuestas_correctas = [
     "B", "A", "C", "C", "C"
 ]
 
-encabezado, preguntas = deteccion_renglones(img)
-celdas = segmentar_encabezado(encabezado)
-nombre, id_valor, code, fecha = celdas[1], celdas[3], celdas[5], celdas[7]
+for i in range(1,6):
+    archivo = f'multiple_choice_{i}.png'
+    img = cv2.imread(archivo, cv2.IMREAD_GRAYSCALE)
+    encabezado, preguntas = deteccion_renglones(img)
+    celdas = segmentar_encabezado(encabezado)
+    tipos_encabezado = {
+        1: "name",
+        3: "id",
+        5: "code",
+        7: "date"
+    }
+    print(f"{archivo} :")
+    for i in range(1,8,2):
+        caracteres, espacio = detectar_caracteres(celdas[i])
+        print(validacion_encabezado(caracteres,espacio,tipos_encabezado[i]))
