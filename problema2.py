@@ -86,6 +86,7 @@ def detectar_caracteres(img: np.ndarray, th_area: int = 2, umbral_espacio = 5) -
 
     Args:
         img (np.ndarray): Imagen en escala de grises o binaria.
+        th_area (int): Umbral de área mínima para considerar un componente como carácter.
         umbral_espacio (int): Distancia mínima entre caracteres para considerar un espacio.
 
     Returns:
@@ -95,17 +96,14 @@ def detectar_caracteres(img: np.ndarray, th_area: int = 2, umbral_espacio = 5) -
 
     num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(celda_bin, connectivity=8, ltype=cv2.CV_32S)
 
-    # Filtrar componentes con área demasiado pequeña (ruido)
     ix_area = stats[:, cv2.CC_STAT_AREA] > th_area
     stats_filtradas = stats[ix_area]
 
-    # Ignorar la primera componente (fondo)
     caracteres = []
     for i in range(1, len(stats_filtradas)):
         x, y, w, h, area = stats_filtradas[i]
         caracteres.append((x, y, w, h))
 
-    # Ordenar caracteres de izquierda a derecha
     caracteres = sorted(caracteres, key=lambda b: b[0])
 
     espacios = []
@@ -113,7 +111,6 @@ def detectar_caracteres(img: np.ndarray, th_area: int = 2, umbral_espacio = 5) -
         _, _, w, _ = caracteres[i]
         x_siguiente, _, _, _ = caracteres[i + 1]
         
-        # Calcular espacio entre caracteres consecutivos
         espacio_entre = x_siguiente - (caracteres[i][0] + w)
 
         if espacio_entre >= umbral_espacio:
@@ -123,6 +120,13 @@ def detectar_caracteres(img: np.ndarray, th_area: int = 2, umbral_espacio = 5) -
 
 def validacion_encabezado (caracteres : list, espacios : list, tipo_encabezado : str):
     """
+    Valida el encabezado según el tipo especificado.
+    Args:
+        caracteres (list): Lista de bounding boxes de caracteres.
+        espacios (list): Lista de índices de espacios entre caracteres.
+        tipo_encabezado (str): Tipo de encabezado a validar ("name", "id", "code", "date").
+    Returns:
+        str: Mensaje de validación del encabezado.
     """
     total_caracteres = len(caracteres)
     total_espacios = len(espacios)
@@ -136,6 +140,63 @@ def validacion_encabezado (caracteres : list, espacios : list, tipo_encabezado :
     estado = "OK" if reglas.get(tipo_encabezado.lower(), False) else "MAL"
     return f"{tipo_encabezado} : {estado}"
 
+def detectar_respuesta_marcada(img: np.ndarray) -> str:
+    """
+    A partir de la seccion de la pregunta, detecta cuál burbuja está marcada (de A a E)
+    y retorna la letra correspondiente.
+    Args:
+        img (numpy.ndarray): Sección de la pregunta
+    Returns:
+        str: Letra de la respuesta marcada (A, B, C, D o E).
+    """
+    _, thresh = cv2.threshold(img, 94, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+
+    contornos, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    # Filtramos los contornos por tamaño y forma circular
+    burbujas = []
+    for c in contornos:
+        area = cv2.contourArea(c)
+        if 100 < area < 1000:
+            x, y, w, h = cv2.boundingRect(c)
+            aspecto = w / float(h)
+            if 0.8 < aspecto < 1.2:
+                burbujas.append((x, y, w, h, c))
+
+    # Ordenar burbujas de izquierda a derecha
+    burbujas = sorted(burbujas, key=lambda x: x[0])
+
+    # Evaluamos el nivel del relleno (más oscuro = más relleno)
+    niveles = []
+    for x, y, w, h, c in burbujas:
+        roi = thresh[y:y+h, x:x+w]
+        nivel = cv2.countNonZero(roi)
+        niveles.append(nivel)
+
+    # La burbuja con más píxeles blancos es la marcada (más relleno)
+    indice_marcado = np.argmax(niveles)
+
+    opciones = ["A", "B", "C", "D", "E"]
+    return opciones[indice_marcado] if indice_marcado < len(opciones) else None
+
+def validacion_respuestas(respuestas: list, respuestas_correctas: list) -> int:
+    """
+    Valida las respuestas marcadas contra las correctas.
+    Args:
+        respuestas (list): Lista de respuestas detectadas.
+        respuestas_correctas (list): Lista de respuestas correctas.
+    Returns:
+        int: Cantidad de respuestas correctas.
+    """
+    cont_correctas = 0
+    for k, respuesta in enumerate(respuestas):
+        if respuesta == respuestas_correctas[k]:
+            print(f"Pregunta {k+1}: OK")
+            cont_correctas += 1
+        else:
+            print(f"Pregunta {k+1}: MAL")
+    return cont_correctas
+
 respuestas_correctas = [
     "A", "A", "B", "A", "D", "B", "B", "C", "B", "A",
     "D", "A", "C", "C", "D", "B", "A", "C", "C", "D",
@@ -143,7 +204,7 @@ respuestas_correctas = [
 ]
 
 for i in range(1,6):
-    archivo = f'multiple_choice_{i}.png'
+    archivo = f'TP 1/multiple_choice_{i}.png'
     img = cv2.imread(archivo, cv2.IMREAD_GRAYSCALE)
     encabezado, preguntas = deteccion_renglones(img)
     celdas = segmentar_encabezado(encabezado)
@@ -154,6 +215,12 @@ for i in range(1,6):
         7: "date"
     }
     print(f"{archivo} :")
-    for i in range(1,8,2):
-        caracteres, espacio = detectar_caracteres(celdas[i])
-        print(validacion_encabezado(caracteres,espacio,tipos_encabezado[i]))
+    for j in range(1,8,2):
+        caracteres, espacio = detectar_caracteres(celdas[j])
+        print(validacion_encabezado(caracteres,espacio,tipos_encabezado[j]))
+    respuestas = []
+    for pregunta in preguntas:
+        respuesta = detectar_respuesta_marcada(pregunta)
+        respuestas.append(respuesta)
+    cantidad_corectas = validacion_respuestas(respuestas, respuestas_correctas)
+    print(f"Cantidad de respuestas correctas: {cantidad_corectas}")
