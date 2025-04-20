@@ -169,8 +169,6 @@ def detectar_respuesta_marcada(img: np.ndarray) -> list:
     niveles = []
     for x, y, w, h, c in burbujas:
         roi = thresh[y:y+h, x:x+w]
-        plt.imshow(roi, cmap='gray')
-        plt.show()
         nivel = cv2.countNonZero(roi)
         niveles.append(nivel)
 
