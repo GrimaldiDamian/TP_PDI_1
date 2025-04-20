@@ -140,20 +140,19 @@ def validacion_encabezado (caracteres : list, espacios : list, tipo_encabezado :
     estado = "OK" if reglas.get(tipo_encabezado.lower(), False) else "MAL"
     return f"{tipo_encabezado} : {estado}"
 
-def detectar_respuesta_marcada(img: np.ndarray) -> str:
+def detectar_respuesta_marcada(img: np.ndarray) -> list:
     """
     A partir de la seccion de la pregunta, detecta cuál burbuja está marcada (de A a E)
-    y retorna la letra correspondiente.
+    y retorna la/s letra/s correspondiente.
     Args:
         img (numpy.ndarray): Sección de la pregunta
     Returns:
-        str: Letra de la respuesta marcada (A, B, C, D o E).
+        list: Lista de letras de respuestas marcadas
     """
     _, thresh = cv2.threshold(img, 94, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
 
     contornos, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-    # Filtramos los contornos por tamaño y forma circular
     burbujas = []
     for c in contornos:
         area = cv2.contourArea(c)
@@ -170,14 +169,22 @@ def detectar_respuesta_marcada(img: np.ndarray) -> str:
     niveles = []
     for x, y, w, h, c in burbujas:
         roi = thresh[y:y+h, x:x+w]
+        plt.imshow(roi, cmap='gray')
+        plt.show()
         nivel = cv2.countNonZero(roi)
         niveles.append(nivel)
 
-    # La burbuja con más píxeles blancos es la marcada (más relleno)
-    indice_marcado = np.argmax(niveles)
+    # Normalizamos los niveles para que estén entre 0 y 1
+    max_nivel = max(niveles)
+    umbral = 0.85 * max_nivel
+
+    # Detectamos las burbujas marcadas
+    indices_marcados = [i for i, nivel in enumerate(niveles) if nivel >= umbral]
 
     opciones = ["A", "B", "C", "D", "E"]
-    return opciones[indice_marcado] if indice_marcado < len(opciones) else None
+    respuestas = [opciones[i] for i in indices_marcados if i < len(opciones)]
+
+    return respuestas
 
 def validacion_respuestas(respuestas: list, respuestas_correctas: list) -> int:
     """
@@ -189,19 +196,63 @@ def validacion_respuestas(respuestas: list, respuestas_correctas: list) -> int:
         int: Cantidad de respuestas correctas.
     """
     cont_correctas = 0
-    for k, respuesta in enumerate(respuestas):
-        if respuesta == respuestas_correctas[k]:
-            print(f"Pregunta {k+1}: OK")
-            cont_correctas += 1
+    for k, list_respuesta in enumerate(respuestas):
+        if len(list_respuesta) == 1:
+            for respuesta in list_respuesta:
+                if respuesta == respuestas_correctas[k]:
+                    print(f"Pregunta {k+1}: OK")
+                    cont_correctas += 1
+                else:
+                    print(f"Pregunta {k+1}: MAL")
         else:
             print(f"Pregunta {k+1}: MAL")
     return cont_correctas
+
+def informe_final(aprobados: list, desaprobados: list) -> None:
+    """
+    Genera una imagen con el informe final de los alumnos aprobados y desaprobados.
+    Se guardara como "informe_final.png".
+    Se mostrara el nombre de las personas aprobadas con una carita sonriente ( :) )
+    y las desaprobadas con una carita triste ( :( ).
+    Args:
+        aprobados (list): Lista de crop de nombres de los aprobados.
+        desaprobados (list): Lista de crop de nombres de los desaprobados.
+    Returns:
+        None
+    """
+    salida = "informe_final.png"
+    imagenes = []
+    for nombre in aprobados:
+        imagen = nombre.copy()
+        cv2.putText(imagen, ':)', (100, 14), cv2.FONT_HERSHEY_SIMPLEX, 0.5, 0, 1, cv2.LINE_AA)
+        imagenes.append(imagen)
+
+    for nombre in desaprobados:
+        imagen = nombre.copy()
+        cv2.putText(imagen, ':(', (100, 14), cv2.FONT_HERSHEY_SIMPLEX, 0.5, 0, 1, cv2.LINE_AA)
+        imagenes.append(imagen)
+
+    altura_total = sum([img.shape[0] for img in imagenes])
+    ancho_max = max([img.shape[1] for img in imagenes])
+
+    # Creamos una imagen con fondo negro para el informe
+    informe = np.array([[255]*ancho_max]*altura_total,dtype="uint8")
+
+    y = 0
+    for img in imagenes:
+        informe[y:y+img.shape[0], 0:img.shape[1]] = img
+        y += img.shape[0]
+
+    cv2.imwrite(salida, informe)
 
 respuestas_correctas = [
     "A", "A", "B", "A", "D", "B", "B", "C", "B", "A",
     "D", "A", "C", "C", "D", "B", "A", "C", "C", "D",
     "B", "A", "C", "C", "C"
 ]
+
+aprobados = []
+desaprobados = []
 
 for i in range(1,6):
     archivo = f'TP 1/multiple_choice_{i}.png'
@@ -224,3 +275,10 @@ for i in range(1,6):
         respuestas.append(respuesta)
     cantidad_corectas = validacion_respuestas(respuestas, respuestas_correctas)
     print(f"Cantidad de respuestas correctas: {cantidad_corectas}")
+    if cantidad_corectas >= 20: aprobados.append(celdas[1])
+    else: desaprobados.append(celdas[1])
+informe_final(aprobados, desaprobados)
+
+informe = cv2.imread("informe_final.png", cv2.IMREAD_GRAYSCALE)
+plt.imshow(informe, cmap='gray')
+plt.show()
