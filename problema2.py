@@ -147,7 +147,7 @@ def detectar_respuesta_marcada(img: np.ndarray) -> list:
     Args:
         img (numpy.ndarray): Sección de la pregunta
     Returns:
-        list: Lista de letras de respuestas marcadas
+        list: Lista de letras de respuestas marcadas o no
     """
     _, thresh = cv2.threshold(img, 94, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
 
@@ -194,14 +194,13 @@ def validacion_respuestas(respuestas: list, respuestas_correctas: list) -> int:
         int: Cantidad de respuestas correctas.
     """
     cont_correctas = 0
-    for k, list_respuesta in enumerate(respuestas):
-        if len(list_respuesta) == 1:
-            for respuesta in list_respuesta:
-                if respuesta == respuestas_correctas[k]:
-                    print(f"Pregunta {k+1}: OK")
-                    cont_correctas += 1
-                else:
-                    print(f"Pregunta {k+1}: MAL")
+    for k, respuesta in enumerate(respuestas):
+        if len(respuesta) == 1:
+            if respuesta[0] == respuestas_correctas[k]:
+                print(f"Pregunta {k+1}: OK")
+                cont_correctas += 1
+            else:
+                print(f"Pregunta {k+1}: MAL")
         else:
             print(f"Pregunta {k+1}: MAL")
     return cont_correctas
@@ -253,7 +252,7 @@ aprobados = []
 desaprobados = []
 
 for i in range(1,6):
-    archivo = f'TP 1/multiple_choice_{i}.png'
+    archivo = f'multiple_choice_{i}.png'
     img = cv2.imread(archivo, cv2.IMREAD_GRAYSCALE)
     encabezado, preguntas = deteccion_renglones(img)
     celdas = segmentar_encabezado(encabezado)
