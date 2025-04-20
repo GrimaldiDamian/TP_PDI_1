@@ -32,7 +32,7 @@ def ecualizacion_local(img, tamaño_ventana) -> np.ndarray:
 
 tamaño = (33,33)
 
-img = cv2.imread('TP 1/Imagen_con_detalles_escondidos.tif', cv2.IMREAD_GRAYSCALE)
+img = cv2.imread('Imagen_con_detalles_escondidos.tif', cv2.IMREAD_GRAYSCALE)
 img_ecualizada = ecualizacion_local(img, tamaño)
 plt.figure()
 ax1 = plt.subplot(121)

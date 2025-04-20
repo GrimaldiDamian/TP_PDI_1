@@ -49,10 +49,8 @@ def agrupar_columnas(columnas : np.ndarray, min_dist : int =5) -> list:
 def segmentar_encabezado(encabezado: np.ndarray) -> list:
     """
     Segmenta el encabezado en celdas usando detección de bordes verticales.
-    
     Args:
         encabezado (numpy.ndarray): Imagen del encabezado.
-    
     Returns:
         list: Lista de subimágenes (celdas) extraídas del encabezado.
     """
@@ -165,14 +163,14 @@ def detectar_respuesta_marcada(img: np.ndarray) -> list:
     # Ordenar burbujas de izquierda a derecha
     burbujas = sorted(burbujas, key=lambda x: x[0])
 
-    # Evaluamos el nivel del relleno (más oscuro = más relleno)
+    # Evaluamos el nivel del relleno (más claro = más relleno)
     niveles = []
     for x, y, w, h, c in burbujas:
         roi = thresh[y:y+h, x:x+w]
         nivel = cv2.countNonZero(roi)
         niveles.append(nivel)
 
-    # Normalizamos los niveles para que estén entre 0 y 1
+    # Creamos un umbral, para detectar si hay mas de una burbuja marcada
     max_nivel = max(niveles)
     umbral = 0.85 * max_nivel
 
